@@ -1,0 +1,28 @@
+# Local agent instructions and planning context
+AGENTS.md
+task_plan.md
+findings.md
+progress.md
+
+# Local project notes
+说明书/
+docs/
+
+# IDE and OS files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Build outputs
+target/
+dist/
+build/
+node_modules/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.log
+
