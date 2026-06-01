@@ -18,7 +18,7 @@ public class CodeGenerator {
         FastAutoGenerator.create(
                         "jdbc:mysql://localhost:3306/aihelpdesk?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai",
                         "root",
-                        "123456"
+                        ""
                 )
                 .globalConfig(builder -> builder
                         .author("wuzh")
