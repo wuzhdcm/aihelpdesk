@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.aihelpdesk.mapper.TicketOperationLogMapper">
+
+    <!-- 通用查询映射结果 -->
+    <resultMap id="BaseResultMap" type="com.example.aihelpdesk.model.entity.TicketOperationLog">
+        <id column="id" property="id" />
+        <result column="ticket_id" property="ticketId" />
+        <result column="operator_id" property="operatorId" />
+        <result column="operation_type" property="operationType" />
+        <result column="before_status" property="beforeStatus" />
+        <result column="after_status" property="afterStatus" />
+        <result column="remark" property="remark" />
+        <result column="create_time" property="createTime" />
+    </resultMap>
+
+    <!-- 通用查询结果列 -->
+    <sql id="Base_Column_List">
+        id, ticket_id, operator_id, operation_type, before_status, after_status, remark, create_time
+    </sql>
+
+</mapper>
