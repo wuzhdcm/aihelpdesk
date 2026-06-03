@@ -1,5 +1,7 @@
 package com.example.aihelpdesk.controller;
 
+import com.example.aihelpdesk.common.CurrentUser;
+import com.example.aihelpdesk.common.CurrentUserContext;
 import com.example.aihelpdesk.common.Result;
 import com.example.aihelpdesk.model.dto.LoginRequest;
 import com.example.aihelpdesk.model.dto.LoginResponse;
@@ -7,10 +9,7 @@ import com.example.aihelpdesk.service.AuthService;
 import jakarta.annotation.Resource;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 /**
  * @Author wzh
@@ -29,5 +28,10 @@ public class AuthController {
     @PostMapping("/login")
     Result<LoginResponse> loginResult(@Valid  @RequestBody LoginRequest loginRequest){
         return Result.success(authService.login(loginRequest));
+    }
+
+    @GetMapping("/me")
+    public Result<CurrentUser> me() {
+        return Result.success(CurrentUserContext.getRequired());
     }
 }

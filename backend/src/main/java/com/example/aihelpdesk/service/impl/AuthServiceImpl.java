@@ -1,12 +1,13 @@
 package com.example.aihelpdesk.service.impl;
 
-import com.example.aihelpdesk.common.SimpleTokenService;
+import com.example.aihelpdesk.common.JwtTokenService;
 import com.example.aihelpdesk.model.dto.LoginRequest;
 import com.example.aihelpdesk.model.dto.LoginResponse;
 import com.example.aihelpdesk.model.dto.LoginUserInfo;
 import com.example.aihelpdesk.model.entity.SysUser;
 import com.example.aihelpdesk.service.AuthService;
 import com.example.aihelpdesk.service.ISysUserService;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -19,11 +20,17 @@ import java.util.List;
 public class AuthServiceImpl implements AuthService {
 
     private final ISysUserService sysUserService;
-    private final SimpleTokenService tokenService;
+    private final JwtTokenService tokenService;
+    private final PasswordEncoder passwordEncoder;
 
-    public AuthServiceImpl(ISysUserService sysUserService, SimpleTokenService tokenService) {
+    public AuthServiceImpl(
+            ISysUserService sysUserService,
+            JwtTokenService tokenService,
+            PasswordEncoder passwordEncoder
+    ) {
         this.sysUserService = sysUserService;
         this.tokenService = tokenService;
+        this.passwordEncoder = passwordEncoder;
     }
 
     @Override
@@ -39,7 +46,7 @@ public class AuthServiceImpl implements AuthService {
             throw new IllegalArgumentException("用户已被禁用");
         }
 
-        if (!sysUser.getPassword().equals(loginRequest.password())){
+        if (!passwordEncoder.matches(loginRequest.password(),  sysUser.getPassword())) {
             throw new IllegalArgumentException("用户名或密码错误");
         }
 
