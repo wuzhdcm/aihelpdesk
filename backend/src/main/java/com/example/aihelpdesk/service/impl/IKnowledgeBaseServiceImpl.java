@@ -26,6 +26,15 @@ public class IKnowledgeBaseServiceImpl extends ServiceImpl<KnowledgeBaseMapper, 
 
         CurrentUser currentUser = CurrentUserContext.getRequired();
 
+        boolean exists = lambdaQuery()
+                .eq(KnowledgeBase::getId,currentUser.id())
+                .eq(KnowledgeBase::getName,currentUser.username())
+                .exists();
+
+        if(exists){
+            throw new IllegalArgumentException("当前用户下已存在同名知识库");
+        }
+
         LocalDateTime now = LocalDateTime.now();
 
         KnowledgeBase knowledgeBase = new KnowledgeBase();
