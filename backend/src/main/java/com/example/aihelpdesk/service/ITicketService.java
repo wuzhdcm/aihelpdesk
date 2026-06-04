@@ -4,6 +4,8 @@ import com.example.aihelpdesk.model.dto.CreateTicketRequest;
 import com.example.aihelpdesk.model.entity.Ticket;
 import com.baomidou.mybatisplus.extension.service.IService;
 
+import java.util.List;
+
 /**
  * <p>
  * 工单表 服务类
@@ -15,4 +17,6 @@ import com.baomidou.mybatisplus.extension.service.IService;
 public interface ITicketService extends IService<Ticket> {
 
     Ticket createTicket(CreateTicketRequest request);
+
+    List<Ticket> listMyTickets();
 }

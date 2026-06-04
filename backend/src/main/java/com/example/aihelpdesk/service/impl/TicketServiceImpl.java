@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 
 /**
  * <p>
@@ -45,6 +46,14 @@ public class TicketServiceImpl extends ServiceImpl<TicketMapper, Ticket> impleme
 
         save(ticket);
         return ticket;
+    }
+
+    @Override
+    public List<Ticket> listMyTickets() {
+        CurrentUser currentUser = CurrentUserContext.getRequired();
+        return lambdaQuery().eq(Ticket::getCreatorId, currentUser.id())
+                .orderByDesc(Ticket::getCreateTime)
+                .list();
     }
 
     private String generateTicketNo(LocalDateTime now){

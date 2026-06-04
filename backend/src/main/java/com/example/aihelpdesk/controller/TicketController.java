@@ -3,14 +3,11 @@ package com.example.aihelpdesk.controller;
 import com.example.aihelpdesk.common.Result;
 import com.example.aihelpdesk.model.dto.CreateTicketRequest;
 import com.example.aihelpdesk.model.entity.Ticket;
-import com.example.aihelpdesk.service.ISysUserService;
 import com.example.aihelpdesk.service.ITicketService;
 import jakarta.validation.Valid;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.stereotype.Controller;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 /**
  * <p>
@@ -35,5 +32,11 @@ public class TicketController {
     public Result<Ticket> createTicket(@Valid @RequestBody CreateTicketRequest createTicketRequest) {
 
         return  Result.success(iTicketService.createTicket(createTicketRequest));
+    }
+
+    @GetMapping("/my")
+    public Result<List<Ticket>> listMyTickets() {
+
+        return Result.success(iTicketService.listMyTickets());
     }
 }
