@@ -1,5 +1,6 @@
 package com.example.aihelpdesk.service;
 
+import com.example.aihelpdesk.model.dto.CreateTicketRequest;
 import com.example.aihelpdesk.model.entity.Ticket;
 import com.baomidou.mybatisplus.extension.service.IService;
 
@@ -13,4 +14,5 @@ import com.baomidou.mybatisplus.extension.service.IService;
  */
 public interface ITicketService extends IService<Ticket> {
 
+    Ticket createTicket(CreateTicketRequest request);
 }

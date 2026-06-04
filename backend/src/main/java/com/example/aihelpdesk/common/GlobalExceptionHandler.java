@@ -24,4 +24,10 @@ public class GlobalExceptionHandler {
     public Result<Void> handleException(Exception ex) {
         return Result.failure("Internal server error");
     }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public Result<Void> handleIllegalArgumentException(IllegalArgumentException ex) {
+        return Result.failure(ex.getMessage());
+    }
 }

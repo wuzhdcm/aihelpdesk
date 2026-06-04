@@ -10,8 +10,12 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 public class PasswordTest {
 
     @Test
-    void passwordHash (){
-        System.out.println(new BCryptPasswordEncoder().encode("123456"));
+    void encodePassword() {
+        BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
+        String encoded = encoder.encode("123456");
+
+        System.out.println(encoded);
+        System.out.println(encoder.matches("123456", encoded));
     }
 
 }
