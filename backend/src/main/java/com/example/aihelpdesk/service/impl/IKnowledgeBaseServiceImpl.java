@@ -10,6 +10,7 @@ import com.example.aihelpdesk.service.IKnowledgeBaseService;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * @Author wzh
@@ -39,5 +40,14 @@ public class IKnowledgeBaseServiceImpl extends ServiceImpl<KnowledgeBaseMapper, 
 
         save(knowledgeBase);
         return knowledgeBase;
+    }
+
+    @Override
+    public List<KnowledgeBase> listMyKnowledgeBases() {
+        CurrentUser currentUser = CurrentUserContext.getRequired();
+        return lambdaQuery()
+                .eq(KnowledgeBase::getId, currentUser.id())
+                .orderByDesc(KnowledgeBase::getUpdateTime)
+                .list();
     }
 }

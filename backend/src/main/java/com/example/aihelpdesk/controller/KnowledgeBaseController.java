@@ -5,10 +5,9 @@ import com.example.aihelpdesk.model.dto.CreateKnowledgeBaseRequest;
 import com.example.aihelpdesk.model.entity.KnowledgeBase;
 import com.example.aihelpdesk.service.IKnowledgeBaseService;
 import jakarta.validation.Valid;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 /**
  * @Author wzh
@@ -27,5 +26,10 @@ public class KnowledgeBaseController {
     @PostMapping
     public Result<KnowledgeBase> createKnowledgeBase(@Valid @RequestBody CreateKnowledgeBaseRequest request) {
         return Result.success(knowledgeBaseService.createKnowledgeBase(request));
+    }
+
+    @GetMapping("/my")
+    public Result<List<KnowledgeBase>> my() {
+        return Result.success(knowledgeBaseService.listMyKnowledgeBases());
     }
 }
