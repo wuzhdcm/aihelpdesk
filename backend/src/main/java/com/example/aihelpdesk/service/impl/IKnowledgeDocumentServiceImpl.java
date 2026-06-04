@@ -16,6 +16,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -42,10 +43,7 @@ public class IKnowledgeDocumentServiceImpl extends ServiceImpl<KnowledgeDocument
             throw new IllegalArgumentException("上传文件不能为空");
         }
 
-        KnowledgeBase knowledgeBase = knowledgeBaseService.getById(knowledgeBaseId);
-        if (knowledgeBase == null || !currentUser.id().equals(knowledgeBase.getOwnerId())) {
-            throw new IllegalArgumentException("知识库不存在或无权上传文档");
-        }
+        checkKnowledgeBaseOwner(knowledgeBaseId,currentUser.id());
 
         String fileName = StringUtils.cleanPath(file.getOriginalFilename());
         if (!StringUtils.hasText(fileName)) {
@@ -85,6 +83,24 @@ public class IKnowledgeDocumentServiceImpl extends ServiceImpl<KnowledgeDocument
         }
 
 
+    }
+
+    @Override
+    public List<KnowledgeDocument> listDocuments(Long knowledgeBaseId) {
+        CurrentUser currentUser =  CurrentUserContext.getRequired();
+
+        checkKnowledgeBaseOwner(knowledgeBaseId,currentUser.id());
+
+        return lambdaQuery().eq(KnowledgeDocument::getKnowledgeBaseId,knowledgeBaseId)
+                .orderByAsc(KnowledgeDocument::getCreateTime)
+                .list();
+    }
+
+    private void checkKnowledgeBaseOwner(Long knowledgeBaseId, Long currentUserId) {
+        KnowledgeBase knowledgeBase = knowledgeBaseService.getById(knowledgeBaseId);
+        if (knowledgeBase == null || !currentUserId.equals(knowledgeBase.getOwnerId())) {
+            throw new IllegalArgumentException("知识库不存在或无权访问");
+        }
     }
 
     private String getFileType(String fileName) {
