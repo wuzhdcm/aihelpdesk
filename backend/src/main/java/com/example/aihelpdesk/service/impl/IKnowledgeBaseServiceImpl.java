@@ -28,7 +28,7 @@ public class IKnowledgeBaseServiceImpl extends ServiceImpl<KnowledgeBaseMapper, 
 
         boolean exists = lambdaQuery()
                 .eq(KnowledgeBase::getId,currentUser.id())
-                .eq(KnowledgeBase::getName,currentUser.username())
+                .eq(KnowledgeBase::getName,request.name())
                 .exists();
 
         if(exists){
