@@ -2,6 +2,7 @@ package com.example.aihelpdesk.service;
 
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.example.aihelpdesk.model.entity.DocumentChunk;
+import com.example.aihelpdesk.model.entity.EmbeddingTask;
 import com.example.aihelpdesk.model.entity.KnowledgeDocument;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -27,4 +28,6 @@ public interface IKnowledgeDocumentService extends IService<KnowledgeDocument> {
     KnowledgeDocument parseDocument(Long documentId);
 
     List<DocumentChunk> listDocumentChunks(Long documentId);
+
+    List<EmbeddingTask> listDocumentTasks(Long documentId);
 }

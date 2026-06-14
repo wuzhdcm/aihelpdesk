@@ -5,9 +5,11 @@ import com.example.aihelpdesk.common.CurrentUser;
 import com.example.aihelpdesk.common.CurrentUserContext;
 import com.example.aihelpdesk.mapper.KnowledgeDocumentMapper;
 import com.example.aihelpdesk.model.entity.DocumentChunk;
+import com.example.aihelpdesk.model.entity.EmbeddingTask;
 import com.example.aihelpdesk.model.entity.KnowledgeBase;
 import com.example.aihelpdesk.model.entity.KnowledgeDocument;
 import com.example.aihelpdesk.service.IDocumentChunkService;
+import com.example.aihelpdesk.service.IEmbeddingTaskService;
 import com.example.aihelpdesk.service.IKnowledgeBaseService;
 import com.example.aihelpdesk.service.IKnowledgeDocumentService;
 import org.springframework.beans.factory.annotation.Value;
@@ -35,12 +37,21 @@ public class IKnowledgeDocumentServiceImpl extends ServiceImpl<KnowledgeDocument
     private static final String PARSE_STATUS_FAILED = "FAILED";
     private static final int CHUNK_SIZE = 500;
 
+    private static final String TASK_TYPE_PARSE = "PARSE";
+    private static final String TASK_STATUS_PENDING = "PENDING";
+    private static final String TASK_STATUS_RUNNING = "RUNNING";
+    private static final String TASK_STATUS_SUCCESS = "SUCCESS";
+    private static final String TASK_STATUS_FAILED = "FAILED";
+
+    private final IEmbeddingTaskService embeddingTaskService;
+
     private final IDocumentChunkService documentChunkService;
 
     private final IKnowledgeBaseService knowledgeBaseService;
     private final Path documentRootDir;
 
-    public IKnowledgeDocumentServiceImpl(IDocumentChunkService documentChunkService, IKnowledgeBaseService knowledgeBaseService, @Value("${app.upload.document-dir:uploads/documents}") Path documentRootDir) {
+    public IKnowledgeDocumentServiceImpl(IEmbeddingTaskService embeddingTaskService, IDocumentChunkService documentChunkService, IKnowledgeBaseService knowledgeBaseService, @Value("${app.upload.document-dir:uploads/documents}") Path documentRootDir) {
+        this.embeddingTaskService = embeddingTaskService;
         this.documentChunkService = documentChunkService;
         this.knowledgeBaseService = knowledgeBaseService;
         this.documentRootDir = documentRootDir;
@@ -119,12 +130,23 @@ public class IKnowledgeDocumentServiceImpl extends ServiceImpl<KnowledgeDocument
         // 2. 通过文档的 knowledgeBaseId 校验当前用户是否拥有该知识库
         checkKnowledgeBaseOwner(document.getKnowledgeBaseId(),currentUser.id());
 
+        EmbeddingTask task = createParseTask(document, currentUser.id());
+
         // 3. 当前最小闭环只支持 TXT，先不要混入 PDF/DOCX
 
         if (!"TXT".equalsIgnoreCase(document.getFileType())) {
             throw new IllegalArgumentException("当前阶段只支持 TXT 文档解析");
         }
         try {
+            // 核心思路：
+            // 1. 先把任务置为 RUNNING，让任务表能反映“正在处理”。
+            // 2. 再把文档状态置为 PARSING，表示文档级别的处理也开始了。
+            // 3. 后面每一步失败，都回写 task 和 document，方便排查。
+            task.setTaskStatus(TASK_STATUS_RUNNING);
+            task.setStartedTime(LocalDateTime.now());
+            task.setUpdateTime(LocalDateTime.now());
+            embeddingTaskService.updateById(task);
+
             // 4. 状态先改成 PARSING，表示开始处理
             document.setParseStatus(PARSE_STATUS_PARSING);
             document.setErrorMessage(null);
@@ -142,6 +164,14 @@ public class IKnowledgeDocumentServiceImpl extends ServiceImpl<KnowledgeDocument
             List<DocumentChunk> chunks = buildChunks(document, content);
             documentChunkService.saveBatch(chunks);
 
+            task.setTaskStatus(TASK_STATUS_SUCCESS);
+            task.setTotalChunks(chunks.size());
+            task.setSuccessChunks(chunks.size());
+            task.setFailReason(null);
+            task.setFinishedTime(LocalDateTime.now());
+            task.setUpdateTime(LocalDateTime.now());
+            embeddingTaskService.updateById(task);
+
             // 8. 解析成功后，状态改成 PARSED
             document.setParseStatus(PARSE_STATUS_PARSED);
             document.setErrorMessage(null);
@@ -150,6 +180,12 @@ public class IKnowledgeDocumentServiceImpl extends ServiceImpl<KnowledgeDocument
             return document;
 
         }catch (Exception ex){
+            task.setTaskStatus(TASK_STATUS_FAILED);
+            task.setFailReason(ex.getMessage());
+            task.setFinishedTime(LocalDateTime.now());
+            task.setUpdateTime(LocalDateTime.now());
+            embeddingTaskService.updateById(task);
+
             // 9. 解析失败要记录状态和错误原因，方便排查
             document.setParseStatus(PARSE_STATUS_FAILED);
             document.setErrorMessage(ex.getMessage());
@@ -178,6 +214,26 @@ public class IKnowledgeDocumentServiceImpl extends ServiceImpl<KnowledgeDocument
 
         return  documentChunkService.lambdaQuery().eq(DocumentChunk::getDocumentId,documentId)
                 .orderByAsc(DocumentChunk::getChunkIndex)
+                .list();
+    }
+
+    @Override
+    public List<EmbeddingTask> listDocumentTasks(Long documentId) {
+        CurrentUser currentUser =  CurrentUserContext.getRequired();
+        // 核心思路：
+        // 1. 查询任务前先查 document，权限边界仍然在 knowledgeBase 上。
+        // 2. Controller 不接收 userId，避免前端伪造身份。
+        // 3. 只有确认当前用户有权访问该知识库，才允许看任务记录。
+        KnowledgeDocument document = getById(documentId);
+        if (document == null) {
+            throw new IllegalArgumentException("文档不存在");
+        }
+        checkKnowledgeBaseOwner(document.getKnowledgeBaseId(),currentUser.id());
+
+
+        return embeddingTaskService.lambdaQuery()
+                .eq(EmbeddingTask::getDocumentId,document.getId())
+                .orderByDesc(EmbeddingTask::getCreateTime)
                 .list();
     }
 
@@ -227,5 +283,32 @@ public class IKnowledgeDocumentServiceImpl extends ServiceImpl<KnowledgeDocument
             return "UNKNOWN";
         }
         return fileName.substring(index + 1).toUpperCase();
+    }
+
+    // 核心思路：
+// 1. 文档解析不是“只改文档状态”，还要生成一条可追踪的任务记录。
+// 2. 任务记录放在 Service 层创建，因为它和权限校验、文档状态流转是同一个业务闭环。
+// 3. 先落一条 PENDING 任务，后面再根据解析过程更新 RUNNING / SUCCESS / FAILED。
+// 4. 这样用户查任务时，能看到任务在哪一步卡住，失败原因也能回放。
+    private EmbeddingTask createParseTask(KnowledgeDocument document, Long userId) {
+        LocalDateTime  now = LocalDateTime.now();
+        EmbeddingTask task = new EmbeddingTask();
+
+        task.setDocumentId(document.getId());
+        task.setKnowledgeBaseId(document.getKnowledgeBaseId());
+        task.setTaskType(TASK_TYPE_PARSE);
+        task.setTaskStatus(TASK_STATUS_PENDING);
+        task.setTotalChunks(0);
+        task.setSuccessChunks(0);
+        task.setFailReason(null);
+        task.setStartedTime(null);
+        task.setFinishedTime(null);
+        task.setCreatedBy(userId);
+        task.setCreateTime(now);
+        task.setUpdateTime(now);
+        task.setDeleted(false);
+
+        embeddingTaskService.save(task);
+        return task;
     }
 }
