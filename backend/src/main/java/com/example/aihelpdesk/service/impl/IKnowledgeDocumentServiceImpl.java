@@ -8,11 +8,7 @@ import com.example.aihelpdesk.model.entity.DocumentChunk;
 import com.example.aihelpdesk.model.entity.EmbeddingTask;
 import com.example.aihelpdesk.model.entity.KnowledgeBase;
 import com.example.aihelpdesk.model.entity.KnowledgeDocument;
-import com.example.aihelpdesk.service.IDocumentChunkService;
-import com.example.aihelpdesk.service.IEmbeddingTaskService;
-import com.example.aihelpdesk.service.IKnowledgeBaseService;
-import com.example.aihelpdesk.service.IKnowledgeDocumentService;
-import org.springframework.beans.factory.annotation.Value;
+import com.example.aihelpdesk.service.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -48,13 +44,13 @@ public class IKnowledgeDocumentServiceImpl extends ServiceImpl<KnowledgeDocument
     private final IDocumentChunkService documentChunkService;
 
     private final IKnowledgeBaseService knowledgeBaseService;
-    private final Path documentRootDir;
+    private final StorageService storageService;
 
-    public IKnowledgeDocumentServiceImpl(IEmbeddingTaskService embeddingTaskService, IDocumentChunkService documentChunkService, IKnowledgeBaseService knowledgeBaseService, @Value("${app.upload.document-dir:uploads/documents}") Path documentRootDir) {
+    public IKnowledgeDocumentServiceImpl(IEmbeddingTaskService embeddingTaskService, IDocumentChunkService documentChunkService, IKnowledgeBaseService knowledgeBaseService, StorageService storageService) {
         this.embeddingTaskService = embeddingTaskService;
         this.documentChunkService = documentChunkService;
         this.knowledgeBaseService = knowledgeBaseService;
-        this.documentRootDir = documentRootDir;
+        this.storageService = storageService;
     }
 
     @Override
@@ -74,13 +70,7 @@ public class IKnowledgeDocumentServiceImpl extends ServiceImpl<KnowledgeDocument
 
         try{
             String fileType = getFileType(fileName);
-            String storedFileName = UUID.randomUUID() + "_" + fileName;
-
-            Path targetDir  = documentRootDir.resolve(String.valueOf(knowledgeBaseId));
-            Files.createDirectories(targetDir);
-
-            Path targetPath =  targetDir.resolve(storedFileName);
-            file.transferTo(targetPath);
+            String storagePath = storageService.saveDocument(knowledgeBaseId,fileName,file);
 
             LocalDateTime now = LocalDateTime.now();
 
@@ -89,7 +79,7 @@ public class IKnowledgeDocumentServiceImpl extends ServiceImpl<KnowledgeDocument
             document.setFileName(fileName);
             document.setFileType(fileType);
             document.setFileSize(file.getSize());
-            document.setStoragePath(targetPath.toString());
+            document.setStoragePath(storagePath);
             document.setParseStatus(PARSE_STATUS_UPLOADED);
             document.setErrorMessage(null);
             document.setCreatedBy(currentUser.id());
@@ -154,7 +144,7 @@ public class IKnowledgeDocumentServiceImpl extends ServiceImpl<KnowledgeDocument
             updateById(document);
 
             // 5. 从 storagePath 读取本地文件内容
-            String content = Files.readString(Path.of(document.getStoragePath()));
+            String content = storageService.readText(document.getStoragePath());
             if (!StringUtils.hasText(content)) {
                 throw new IllegalArgumentException("文档内容为空");
             }
