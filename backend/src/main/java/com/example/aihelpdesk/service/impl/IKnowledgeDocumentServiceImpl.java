@@ -9,17 +9,15 @@ import com.example.aihelpdesk.model.entity.EmbeddingTask;
 import com.example.aihelpdesk.model.entity.KnowledgeBase;
 import com.example.aihelpdesk.model.entity.KnowledgeDocument;
 import com.example.aihelpdesk.service.*;
+import com.example.aihelpdesk.service.parser.DocumentParser;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
-
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
+
 
 /**
  * @Author wzh
@@ -39,18 +37,24 @@ public class IKnowledgeDocumentServiceImpl extends ServiceImpl<KnowledgeDocument
     private static final String TASK_STATUS_SUCCESS = "SUCCESS";
     private static final String TASK_STATUS_FAILED = "FAILED";
 
+    private static final List<String> SUPPORTED_FILE_TYPES = List.of("TXT", "MD", "MARKDOWN");
+
     private final IEmbeddingTaskService embeddingTaskService;
 
     private final IDocumentChunkService documentChunkService;
 
     private final IKnowledgeBaseService knowledgeBaseService;
+
     private final StorageService storageService;
 
-    public IKnowledgeDocumentServiceImpl(IEmbeddingTaskService embeddingTaskService, IDocumentChunkService documentChunkService, IKnowledgeBaseService knowledgeBaseService, StorageService storageService) {
+    private final List<DocumentParser> documentParsers;
+
+    public IKnowledgeDocumentServiceImpl(IEmbeddingTaskService embeddingTaskService, IDocumentChunkService documentChunkService, IKnowledgeBaseService knowledgeBaseService, StorageService storageService, List<DocumentParser> documentParsers) {
         this.embeddingTaskService = embeddingTaskService;
         this.documentChunkService = documentChunkService;
         this.knowledgeBaseService = knowledgeBaseService;
         this.storageService = storageService;
+        this.documentParsers = documentParsers;
     }
 
     @Override
@@ -70,6 +74,7 @@ public class IKnowledgeDocumentServiceImpl extends ServiceImpl<KnowledgeDocument
 
         try{
             String fileType = getFileType(fileName);
+            checkSupportedFileType(fileType);
             String storagePath = storageService.saveDocument(knowledgeBaseId,fileName,file);
 
             LocalDateTime now = LocalDateTime.now();
@@ -109,7 +114,7 @@ public class IKnowledgeDocumentServiceImpl extends ServiceImpl<KnowledgeDocument
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(noRollbackFor = IllegalArgumentException.class)
     public KnowledgeDocument parseDocument(Long documentId) {
         CurrentUser currentUser =  CurrentUserContext.getRequired();
         //1. 先查文档记录
@@ -124,9 +129,6 @@ public class IKnowledgeDocumentServiceImpl extends ServiceImpl<KnowledgeDocument
 
         // 3. 当前最小闭环只支持 TXT，先不要混入 PDF/DOCX
 
-        if (!"TXT".equalsIgnoreCase(document.getFileType())) {
-            throw new IllegalArgumentException("当前阶段只支持 TXT 文档解析");
-        }
         try {
             // 核心思路：
             // 1. 先把任务置为 RUNNING，让任务表能反映“正在处理”。
@@ -144,7 +146,9 @@ public class IKnowledgeDocumentServiceImpl extends ServiceImpl<KnowledgeDocument
             updateById(document);
 
             // 5. 从 storagePath 读取本地文件内容
-            String content = storageService.readText(document.getStoragePath());
+            String rawContent  = storageService.readText(document.getStoragePath());
+            DocumentParser parser = selectParser(document.getFileType());
+            String content = parser.parse(document, rawContent);
             if (!StringUtils.hasText(content)) {
                 throw new IllegalArgumentException("文档内容为空");
             }
@@ -275,6 +279,16 @@ public class IKnowledgeDocumentServiceImpl extends ServiceImpl<KnowledgeDocument
         return fileName.substring(index + 1).toUpperCase();
     }
 
+    private void checkSupportedFileType(String fileType) {
+        // 核心思路：
+        // 1. 文件类型白名单放在上传入口，避免不支持的文件先进入 MinIO 和 knowledge_document。
+        // 2. 当前阶段只允许 TXT / MD / MARKDOWN，保证上传后的文档都能进入解析闭环。
+        // 3. 后续支持 PDF/DOCX 时，只需要扩展白名单和对应 DocumentParser。
+        if (!SUPPORTED_FILE_TYPES.contains(fileType)) {
+            throw new IllegalArgumentException("暂不支持该文件类型：" + fileType);
+        }
+    }
+
     // 核心思路：
 // 1. 文档解析不是“只改文档状态”，还要生成一条可追踪的任务记录。
 // 2. 任务记录放在 Service 层创建，因为它和权限校验、文档状态流转是同一个业务闭环。
@@ -300,5 +314,12 @@ public class IKnowledgeDocumentServiceImpl extends ServiceImpl<KnowledgeDocument
 
         embeddingTaskService.save(task);
         return task;
+    }
+
+    private DocumentParser selectParser(String fileType) {
+        return documentParsers.stream()
+                .filter(parser -> parser.supports(fileType))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("暂不支持该文件类型：" + fileType));
     }
 }
