@@ -37,4 +37,9 @@ public class DocumentController {
     public Result<List<EmbeddingTask>> listDocumentTasks(@PathVariable Long id) {
         return Result.success(knowledgeDocumentService.listDocumentTasks(id));
     }
+
+    @PostMapping("/{id}/embed")
+    public Result<List<DocumentChunk>> embedDocument(@PathVariable Long id) {
+        return Result.success(knowledgeDocumentService.embedDocument(id));
+    }
 }

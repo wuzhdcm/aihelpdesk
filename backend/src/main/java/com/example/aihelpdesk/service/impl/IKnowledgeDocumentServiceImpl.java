@@ -9,6 +9,7 @@ import com.example.aihelpdesk.model.entity.EmbeddingTask;
 import com.example.aihelpdesk.model.entity.KnowledgeBase;
 import com.example.aihelpdesk.model.entity.KnowledgeDocument;
 import com.example.aihelpdesk.service.*;
+import com.example.aihelpdesk.service.embedding.EmbeddingClient;
 import com.example.aihelpdesk.service.parser.DocumentParser;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,6 +40,8 @@ public class IKnowledgeDocumentServiceImpl extends ServiceImpl<KnowledgeDocument
 
     private static final List<String> SUPPORTED_FILE_TYPES = List.of("TXT", "MD", "MARKDOWN");
 
+    private static final String TASK_TYPE_EMBEDDING = "EMBEDDING";
+
     private final IEmbeddingTaskService embeddingTaskService;
 
     private final IDocumentChunkService documentChunkService;
@@ -49,12 +52,15 @@ public class IKnowledgeDocumentServiceImpl extends ServiceImpl<KnowledgeDocument
 
     private final List<DocumentParser> documentParsers;
 
-    public IKnowledgeDocumentServiceImpl(IEmbeddingTaskService embeddingTaskService, IDocumentChunkService documentChunkService, IKnowledgeBaseService knowledgeBaseService, StorageService storageService, List<DocumentParser> documentParsers) {
+    private final EmbeddingClient embeddingClient;
+
+    public IKnowledgeDocumentServiceImpl(IEmbeddingTaskService embeddingTaskService, IDocumentChunkService documentChunkService, IKnowledgeBaseService knowledgeBaseService, StorageService storageService, List<DocumentParser> documentParsers, EmbeddingClient embeddingClient) {
         this.embeddingTaskService = embeddingTaskService;
         this.documentChunkService = documentChunkService;
         this.knowledgeBaseService = knowledgeBaseService;
         this.storageService = storageService;
         this.documentParsers = documentParsers;
+        this.embeddingClient = embeddingClient;
     }
 
     @Override
@@ -229,6 +235,90 @@ public class IKnowledgeDocumentServiceImpl extends ServiceImpl<KnowledgeDocument
                 .eq(EmbeddingTask::getDocumentId,document.getId())
                 .orderByDesc(EmbeddingTask::getCreateTime)
                 .list();
+    }
+
+    @Override
+    public List<DocumentChunk> embedDocument(Long documentId) {
+        CurrentUser  currentUser =  CurrentUserContext.getRequired();
+        // 核心思路：
+        // 1. 向量化前先查 document，因为权限边界仍然在 document 所属的 knowledgeBase 上。
+        // 2. 只有 PARSED 文档才允许向量化，避免对未解析或解析失败的文档生成脏向量。
+        // 3. 当前阶段用 FakeEmbeddingClient 生成 fake vectorId，先跑通任务状态和 chunk 回写闭环。
+        // 4. 后续接真实模型时，只替换 EmbeddingClient 实现，不改 Controller 和业务编排。
+
+        KnowledgeDocument document = getById(documentId);
+        if (document == null) {
+            throw new IllegalArgumentException("文档不存在");
+        }
+
+        checkKnowledgeBaseOwner(document.getKnowledgeBaseId() ,currentUser.id());
+
+        if (!PARSE_STATUS_PARSED.equals(document.getParseStatus())) {
+            throw new IllegalArgumentException("文档尚未解析成功，不能向量化");
+        }
+
+        EmbeddingTask task = createEmbeddingTask(document, currentUser.id());
+
+        try{
+            task.setTaskStatus(TASK_STATUS_RUNNING);
+            task.setStartedTime(LocalDateTime.now());
+            task.setUpdateTime(LocalDateTime.now());
+            embeddingTaskService.updateById(task);
+
+            List<DocumentChunk> chunks = documentChunkService.lambdaQuery()
+                    .eq(DocumentChunk::getDocumentId,document.getId())
+                    .orderByAsc(DocumentChunk::getChunkIndex)
+                    .list();
+            if (chunks.isEmpty()) {
+                throw new IllegalArgumentException("文档分片为空，不能向量化");
+            }
+
+            for(DocumentChunk chunk : chunks) {
+                String vectorId = embeddingClient.embedChunk(chunk.getId(), chunk.getContent());
+                chunk.setVectorId(vectorId);
+            }
+
+            documentChunkService.updateBatchById(chunks);
+            task.setTaskStatus(TASK_STATUS_SUCCESS);
+            task.setTotalChunks(chunks.size());
+            task.setSuccessChunks(chunks.size());
+            task.setFailReason(null);
+            task.setFinishedTime(LocalDateTime.now());
+            task.setUpdateTime(LocalDateTime.now());
+            embeddingTaskService.updateById(task);
+
+            return chunks;
+        }catch (Exception ex){
+            task.setTaskStatus(TASK_STATUS_FAILED);
+            task.setFailReason(ex.getMessage());
+            task.setFinishedTime(LocalDateTime.now());
+            task.setUpdateTime(LocalDateTime.now());
+            embeddingTaskService.updateById(task);
+
+            throw new IllegalArgumentException("文档向量化失败：" + ex.getMessage());
+        }
+    }
+
+    private EmbeddingTask createEmbeddingTask(KnowledgeDocument document, Long id) {
+        LocalDateTime now = LocalDateTime.now();
+
+        EmbeddingTask task = new EmbeddingTask();
+        task.setDocumentId(document.getId());
+        task.setKnowledgeBaseId(document.getKnowledgeBaseId());
+        task.setTaskType(TASK_TYPE_EMBEDDING);
+        task.setTaskStatus(TASK_STATUS_PENDING);
+        task.setTotalChunks(0);
+        task.setSuccessChunks(0);
+        task.setFailReason(null);
+        task.setStartedTime(null);
+        task.setFinishedTime(null);
+        task.setCreatedBy(id);
+        task.setCreateTime(now);
+        task.setUpdateTime(now);
+        task.setDeleted(false);
+
+        embeddingTaskService.save(task);
+        return task;
     }
 
 

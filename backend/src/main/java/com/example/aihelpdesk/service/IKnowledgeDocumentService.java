@@ -30,4 +30,6 @@ public interface IKnowledgeDocumentService extends IService<KnowledgeDocument> {
     List<DocumentChunk> listDocumentChunks(Long documentId);
 
     List<EmbeddingTask> listDocumentTasks(Long documentId);
+
+    List<DocumentChunk> embedDocument(Long documentId);
 }
